@@ -1,0 +1,14 @@
+{
+  "name": "SplunkSink",
+  "config": {
+    "topics": "test.topic",
+    "tasks.max": "1",
+    "connector.class": "com.splunk.kafka.connect.SplunkSinkConnector",
+    "splunk.indexes": "main",
+    "splunk.hec.uri": "http://splunk:8088",
+    "splunk.hec.token": "HEC_TOKEN",
+    "splunk.sourcetypes": "my_sourcetype",
+    "confluent.topic.bootstrap.servers": "kafka0:29092;kafka1:29093",
+    "value.converter": "org.apache.kafka.connect.storage.StringConverter"
+  }
+}

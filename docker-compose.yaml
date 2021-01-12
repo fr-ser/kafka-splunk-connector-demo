@@ -1,0 +1,84 @@
+version: "3.2"
+# docker compose version for compatibility with CircleCI
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.0.0
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+  kafka0: &default-broker
+    # https://docs.confluent.io/current/installation/versions-interoperability.html#cp-and-apache-ak-compatibility
+    # version maps to kafka 2.2.1
+    image: confluentinc/cp-kafka:6.0.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment: &default-broker-env
+      KAFKA_BROKER_ID: 0
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "2"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: "INTERNAL://kafka0:29092,EXTERNAL://:9092"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka0:29092,EXTERNAL://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  kafka1:
+    <<: *default-broker
+    ports:
+      - "9093:9093"
+    environment:
+      <<: *default-broker-env
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENERS: "INTERNAL://kafka1:29093,EXTERNAL://:9093"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka1:29093,EXTERNAL://localhost:9093"
+  kafka-cli:
+    image: frser/kafka-cli:2.6.0
+    environment:
+      BOOTSTRAP_SERVER: kafka0:29092
+      CREATE_TOPICS: >-
+        test.topic,
+    depends_on:
+      - kafka0
+      - kafka1
+  connect0: &connect-default
+    build:
+      context: .
+    ports:
+      - "8083:8083"
+    env_file:
+      - dev.env
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka0:29092,kafka1:29093"
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect0
+    volumes:
+        - ${PWD}/tests/dev-secrets.properties:/opt/dev-secrets.properties
+        - ${PWD}/tests/file_test:/opt/file_test
+    depends_on:
+      - kafka0
+      - kafka1
+  connect1:
+    <<: *connect-default
+    ports:
+      - "8084:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka0:29092,kafka1:29093"
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect1
+  wait-for-kafka-connect:
+    image: dadarek/wait-for-dependencies
+    environment:
+      SLEEP_LENGTH: 10
+      TIMEOUT_LENGTH: ${STARTUP_TIMEOUT:-120}
+    command: connect0:8083 connect1:8083
+    depends_on:
+      - connect0
+      - connect1
+  splunk:
+    image: splunk/splunk:8.1
+    ports:
+      - "8000:8000"
+      - "8088:8088"
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_PASSWORD: password
